@@ -148,7 +148,7 @@ namespace BTP
     {
         // public static SPIIPLUSCOM660Lib.Channel Value { get; set; }
         public static string Comport { get; set; }
-        public static ChanelOctKlipper Value { get; set; }
+        public static ChanelGateway Value { get; set; }   // Fabion: шлюз tcp_to_udp_fabion
         public static DeviceMarlin plate_sup { get; set; }
         public static Camera Camera1 { get; set; }
         public static Camera Camera2 { get; set; }

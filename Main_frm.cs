@@ -44,42 +44,46 @@ namespace BTP
 
 
             //Camera2frm = new Camera2_frm();
+            AddTrajGenButton();
         }
 
+        // Fabion: опрос состояния шлюза 10 раз в секунду, обновление окон, переподключение
+        DateTime _lastReconnect = DateTime.MinValue;
         private void StartPeriodicOperation()
         {
             if (_isRunning || Manual == null || Manual.IsDisposed) return;
-
             _isRunning = true;
-
-
-
-            _timer = new System.Threading.Timer(async state =>
+            _timer = new System.Threading.Timer(state =>
             {
-               // try
+                try
                 {
-                    // Выполняем асинхронную операцию
-                    var result = await ConnectionData.Value.device.GetCurStatusAsync();
-                   // Console.WriteLine(result);
-                    // Обновляем Label в зависимой форме через SynchronizationContext
-                    _uiContext.Post(UpdateDependentFormLabel, result);
+                    var ch = ConnectionData.Value;
+                    if (ch == null) return;
+                    if (!ch.client.Connected && (DateTime.Now - _lastReconnect).TotalSeconds > 3)
+                    {
+                        _lastReconnect = DateTime.Now;
+                        ch.Connect();
+                    }
+                    ch.UpdateConnectionData();
+                    _uiContext.Post(UpdateDependentFormLabel, ch.StatusText());
                 }
-               // catch (Exception ex)
-                {
-                    // Логируем ошибку
-                   // Console.WriteLine("ex.ToString()");   
-                //    _uiContext.Post(UpdateDependentFormLabel, $"Ошибка: {ex.Message}");
-                }
-            }, null, 0, 50); // 
+                catch (Exception ex) { Console.WriteLine("Опрос шлюза: " + ex.Message); }
+            }, null, 0, 100);
         }
 
         private void UpdateDependentFormLabel(object state)
         {
-            if (state is string text && Manual != null && !Manual.IsDisposed)
+            var text = state as string;
+            if (text == null) return;
+            this.Text = "BTP Fabion — " + text;
+            if (Manual != null && !Manual.IsDisposed) Manual.UpdateLabelSafe(text);
+            try
             {
-                // Используем безопасный метод обновления из зависимой формы
-                Manual.UpdateLabelSafe(text);
+                if (CallBackMy2.callbackEventHandler != null && Manual != null && Manual.Visible) CallBackMy2.callbackEventHandler("");
+                if (CallBackMy3.callbackEventHandler != null && Auto != null && Auto.Visible) CallBackMy3.callbackEventHandler("");
+                if (CallBackMy5.callbackEventHandler != null && Diagnostics != null && Diagnostics.Visible) CallBackMy5.callbackEventHandler("");
             }
+            catch (Exception ex) { Console.WriteLine("Обновление окон: " + ex.Message); }
         }
 
         // Асинхронная операция
@@ -87,7 +91,7 @@ namespace BTP
         {
             // Имитация асинхронной работы (например, получение данных)
            // await Task.Delay(100);
-            var res =  await ConnectionData.Value.device.GetCurStatusAsync();
+            var res =  await ConnectionData.Value.device.GetCurStatusAsync();   // Fabion: строка состояния
             // Пример данных - можно заменить на реальную логику
             //int randomValue = new Random().Next(1, 100);
             return res;
@@ -629,37 +633,60 @@ namespace BTP
 
 
 
+        // Fabion: подключение к шлюзу tcp_to_udp_fabion.
+        // com_main — адрес шлюза (по умолчанию 127.0.0.1), com_sup — порт (по умолчанию 62000).
         public async Task SetCommunication()
         {
+            int port;
+            if (!int.TryParse(ConnectionData.com_sup, out port) || port <= 0) port = 62000;
+            var host = string.IsNullOrWhiteSpace(ConnectionData.com_main) || ConnectionData.com_main.StartsWith("COM") ? "127.0.0.1" : ConnectionData.com_main;
+            if (ConnectionData.Value != null) ConnectionData.Value.client.Close();
+            ConnectionData.Value = new ChanelGateway(host, port);
+            var ch = ConnectionData.Value;
+            ch.client.OnMessage += msg => Console.WriteLine("[шлюз] " + msg);
 
-            ConnectionData.Value = new ChanelOctKlipper(ConnectionData.com_main, Convert.ToInt32( ConnectionData.com_sup));
-
-            //ConnectionData.Value.device.connectStart();
-            await ConnectionData.Value.device.ConnectWebSocketAsync();
-
-            // Подписываемся на ответы G-кода
-            ConnectionData.Value.device.GcodeResponses.Subscribe(response => Console.WriteLine($"[G-code] {response}"));
-
-            // Подписываемся на обновления статуса
-            ConnectionData.Value.device.StatusUpdates.Subscribe(status => Console.WriteLine($"[Status] {status.State}, Extruder: {status.ExtruderTemp:F1}°C, Bed: {status.BedTemp:F1}°C"));
-
-            ConnectionData.bConnected = true;
-            //startTimer();
+            var ok = await Task.Run(() => ch.Connect());
+            ConnectionData.bConnected = ok;
+            if (!ok) Console.WriteLine("Шлюз " + host + ":" + port + " недоступен — повторю подключение автоматически");
             axes = new int[]
                             {
-                             ConnectionData.Value.ACSC_AXIS_0,
-                             ConnectionData.Value.ACSC_AXIS_1,
-                             ConnectionData.Value.ACSC_AXIS_2,
-                             ConnectionData.Value.ACSC_AXIS_3,
-                             ConnectionData.Value.ACSC_AXIS_4,
-                             ConnectionData.Value.ACSC_AXIS_5,
-                             ConnectionData.Value.ACSC_AXIS_6,
-                             ConnectionData.Value.ACSC_AXIS_7,
+                             ch.ACSC_AXIS_0,
+                             ch.ACSC_AXIS_1,
+                             ch.ACSC_AXIS_2,
+                             ch.ACSC_AXIS_3,
+                             ch.ACSC_AXIS_4,
+                             ch.ACSC_AXIS_5,
+                             ch.ACSC_AXIS_6,
+                             ch.ACSC_AXIS_7,
                              -1
                             };
-            // return 
             StartPeriodicOperation();
-            //var status_thr = new Thread(update_status);
+        }
+
+        // Fabion: окно генерации простых траекторий
+        TrajGen_frm TrajGen;
+        private void TrajGenBtn_Click(object sender, EventArgs e)
+        {
+            if (TrajGen == null || TrajGen.IsDisposed) TrajGen = new TrajGen_frm(Program);
+            TrajGen.Show(this);
+            TrajGen.BringToFront();
+        }
+
+        void AddTrajGenButton()
+        {
+            var btn = new Button();
+            btn.Name = "TrajGenBtn";
+            btn.Text = "Генератор";
+            btn.Size = DiagnosticsBtn.Size;
+            btn.Font = DiagnosticsBtn.Font;
+            btn.BackColor = SystemColors.Control;
+            btn.UseVisualStyleBackColor = false;
+            // справа от самой правой кнопки панели
+            int right = 0, top = DiagnosticsBtn.Top;
+            foreach (Control ctl in panel1.Controls) if (ctl is Button && ctl.Right > right) { right = ctl.Right; top = ctl.Top; }
+            btn.Location = new Point(right + 6, top);
+            btn.Click += TrajGenBtn_Click;
+            panel1.Controls.Add(btn);
         }
 
         private void BTP_Load(object sender, EventArgs e)

@@ -16,13 +16,14 @@ namespace BTP
         int X = 0;
         int Y = 1;
 
-        int Z3 = 2;
-        int Z2 = 4;        
-        int Z1 = 6;
+        // Fabion: номера осей = индексы моторов Octopus
+        int Z1 = 2;
+        int Z2 = 3;
+        int Z3 = 4;
 
-        int F1 = 7;
-        int F2 = 7;
-        int F3 = 7;
+        int F1 = 5;   // поршень шприца 1 (E1)
+        int F2 = 6;   // E2
+        int F3 = 7;   // E3
 
         public Label status_label;
         public Manual_frm()
@@ -46,13 +47,13 @@ namespace BTP
 
         private void UpdateLabelInternal(string text)
         {
-            if (!this.IsDisposed && MachinePosX != null)
+            if (!this.IsDisposed && MachinePosX != null && ConnectionData.Value != null)
             {
-                MachinePosX.Text = text;
-
-                // Добавляем информацию о времени получения
-                string timeInfo = $"\n(Получено: {DateTime.Now:HH:mm:ss.fff})";
-                MachinePosX.Text += timeInfo;
+                // Fabion: координаты в системе печати (X, Y, Z активного шприца)
+                var st = ConnectionData.Value.State;
+                MachinePosX.Text = string.Format("{0:F3}", st.PosTool[0]);
+                MachinePosY.Text = string.Format("{0:F3}", st.PosTool[1]);
+                MachinePosZ.Text = string.Format("{0:F3}", st.PosTool[2]);
             }
         }
         //Thread UpdateDataThread = null;
@@ -732,7 +733,7 @@ namespace BTP
         // Выбор дозатора S1 для отображения координат
         private void S1Btn_Click(object sender, EventArgs e)
         {
-            ConnectionData.Value.setActiveDisp(2);
+            ConnectionData.Value.setActiveDisp(0);   // Fabion: шприц 1
             if (S1Btn.BackColor == SystemColors.Control)
             {
                 S1Btn.BackColor = Color.YellowGreen;
@@ -747,7 +748,7 @@ namespace BTP
 
         private void S2Btn_Click(object sender, EventArgs e)
         {
-            ConnectionData.Value.setActiveDisp(0);
+            ConnectionData.Value.setActiveDisp(1);   // шприц 2
             if (S2Btn.BackColor == SystemColors.Control)
             {
                 S2Btn.BackColor = Color.YellowGreen;
@@ -761,7 +762,7 @@ namespace BTP
 
         private void S3Btn_Click(object sender, EventArgs e)
         {
-            ConnectionData.Value.setActiveDisp(1);
+            ConnectionData.Value.setActiveDisp(2);   // шприц 3
             if (S3Btn.BackColor == SystemColors.Control)
             {
                 S3Btn.BackColor = Color.YellowGreen;
@@ -2500,93 +2501,7 @@ namespace BTP
             }
         }
 
-        private void button22_Click(object sender, EventArgs e)
-        {
-            if (ConnectionData.bConnected)
-            {
-                try
-                {
 
-                    if (but_table_pnevmo.BackColor == SystemColors.Control)
-                    {
-
-                        but_table_pnevmo.BackColor = Color.YellowGreen;
-                        ConnectionData.plate_sup.sendCommand("M576 I2 V1");
-                    }
-                    else
-                    {
-                        but_table_pnevmo.BackColor = SystemColors.Control;
-                        ConnectionData.plate_sup.sendCommand("M576 I2 V0");
-                    }
-
-                }
-                catch (COMException Ex)
-                {
-                    ErorMsg(Ex);
-                }
-            }
-        }
-
-
-
-        private void but_vakuum_Click(object sender, EventArgs e)
-        {
-            if (ConnectionData.bConnected)
-            {
-                try
-                {
-
-                    if(but_vakuum.BackColor==SystemColors.Control)
-                    {
-                        
-                        but_vakuum.BackColor = Color.YellowGreen;
-                        ConnectionData.plate_sup.sendCommand("M576 I4 V1");
-                    }
-                    else
-                    {
-                        but_vakuum.BackColor = SystemColors.Control;
-                        ConnectionData.plate_sup.sendCommand("M576 I4 V0");
-                    }
-                   
-                }
-                catch (COMException Ex)
-                {
-                    ErorMsg(Ex);
-                }
-            }
-        }
-
-        private void but_cover_pnevmo_Click(object sender, EventArgs e)
-        {
-            if (ConnectionData.bConnected)
-            {
-                try
-                {
-
-                    if (but_cover_pnevmo.BackColor == SystemColors.Control)
-                    {
-
-                        but_cover_pnevmo.BackColor = Color.YellowGreen;
-                        ConnectionData.Value.device.sendCommand("M106 S255");
-                    }
-                    else
-                    {
-                        but_cover_pnevmo.BackColor = SystemColors.Control;
-                        ConnectionData.Value.device.sendCommand("M106 S0");
-                    }
-
-                }
-                catch (COMException Ex)
-                {
-                    ErorMsg(Ex);
-                }
-            }
-        }
-
-        private void but_send_g_code_Click(object sender, EventArgs e)
-        {
-            ConnectionData.Value.device.sendCommand(textBox_send_g_code.Text);
-        }
     }
 }
 

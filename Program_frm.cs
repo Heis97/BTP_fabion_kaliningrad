@@ -271,6 +271,19 @@ namespace BTP
             //MessageBox.Show("Выбран файл: " + OpenGCode.FileName);
         }
 
+        // Fabion: принять G-код из генератора траекторий и показать превью
+        public void SetGCode(string text, string name)
+        {
+            list_pr.Clear();
+            GCodeInputBox.Text = text;
+            list_pr.AddRange(GCodeInputBox.Lines);
+            OpenFileProgram(list_pr);
+            SetDefaultViews();
+            G_code_name.Text = name;
+        }
+
+        public string GetGCode() { return GCodeInputBox.Text; }
+
         private void OpenFileProgram(List<string> list)
         { 
             long[] ticks = new long[2];
