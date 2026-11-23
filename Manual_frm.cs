@@ -31,6 +31,48 @@ namespace BTP
             CallBackMy2.callbackEventHandler = new CallBackMy2.callbackEvent(this.Reload);
             InitializeComponent();
             status_label = MachinePosX;
+            FabionLayout();
+        }
+
+        // Fabion: раскладка меток координат. Вызывается в конструкторе и после смены языка
+        // (ChangeFormLanguage заново применяет ресурсы и вернул бы старое положение).
+        void FabionLayout()
+        {
+            // Fabion: метка X была растянута под строку статуса Klipper и уехала под lab_prog_cur —
+            // возвращаем её в столбец «Machine Pos» над Y, тем же размером и шрифтом
+            MachinePosX.AutoSize = false;
+            MachinePosX.Size = MachinePosY.Size;
+            MachinePosX.Font = MachinePosY.Font;
+            MachinePosX.TextAlign = MachinePosY.TextAlign;
+            MachinePosX.Location = new Point(MachinePosY.Left, MachinePosY.Top - (MachinePosZ.Top - MachinePosY.Top));
+            MachinePosX.BringToFront();
+
+            // Fabion: подписи столбцов — как в bioprint_ui: «Машина» (абсолютное) и «Текущая» (с офсетом)
+            label9.Text = "Машина";
+            label10.Text = "Текущая";
+        }
+
+        // Fabion: обновление координат (вызывается из Main_frm ~100 раз в секунду в потоке интерфейса).
+        // Левый столбец «Машина» — абсолютное положение машины (xm ym zm от шлюза, Z активного шприца).
+        // Правый столбец «Текущая» — в текущей системе координат, с офсетом (xc yc zc, как крупные цифры в bioprint_ui).
+        readonly string[] _lastPos = new string[6];
+        public void UpdatePositions()
+        {
+            if (IsDisposed || !Visible || ConnectionData.Value == null) return;
+            var st = ConnectionData.Value.State;
+            SetIfChanged(MachinePosX, 0, st.PosMachine[0]);
+            SetIfChanged(MachinePosY, 1, st.PosMachine[1]);
+            SetIfChanged(MachinePosZ, 2, st.PosMachine[2]);
+            SetIfChanged(XToolPos, 3, st.PosCurrent[0]);
+            SetIfChanged(YToolPos, 4, st.PosCurrent[1]);
+            SetIfChanged(ZToolPos, 5, st.PosCurrent[2]);
+        }
+        void SetIfChanged(Label lab, int i, double v)
+        {
+            var t = v.ToString("F3");   // формат текущей культуры — как раньше (ZToolPos читается Convert.ToDouble)
+            if (_lastPos[i] == t) return;   // не перерисовываем без изменений
+            _lastPos[i] = t;
+            lab.Text = t;
         }
         public void UpdateLabelSafe(string text)
         {
@@ -47,14 +89,8 @@ namespace BTP
 
         private void UpdateLabelInternal(string text)
         {
-            if (!this.IsDisposed && MachinePosX != null && ConnectionData.Value != null)
-            {
-                // Fabion: координаты в системе печати (X, Y, Z активного шприца)
-                var st = ConnectionData.Value.State;
-                MachinePosX.Text = string.Format("{0:F3}", st.PosTool[0]);
-                MachinePosY.Text = string.Format("{0:F3}", st.PosTool[1]);
-                MachinePosZ.Text = string.Format("{0:F3}", st.PosTool[2]);
-            }
+            // Fabion: координаты обновляет UpdatePositions() (~100 Гц), здесь ничего не делаем
+
         }
         //Thread UpdateDataThread = null;
         double OffsetX = 0;
@@ -162,7 +198,6 @@ namespace BTP
                 ZS3LL.BackColor = SystemColors.Control;
             }
             #endregion
-            //Console.WriteLine("reload manual");
         }
 
         public void set_pos_lab(string[] pos)
@@ -2347,6 +2382,8 @@ namespace BTP
                     }
                 }
             }
+            FabionLayout();
+            for (int i = 0; i < _lastPos.Length; i++) _lastPos[i] = null;   // перерисовать координаты
         }
 
         private void SetZeroXYS1_Click(object sender, EventArgs e)
@@ -2501,7 +2538,7 @@ namespace BTP
             }
         }
 
-
+        
     }
 }
 

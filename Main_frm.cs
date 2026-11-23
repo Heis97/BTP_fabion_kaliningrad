@@ -663,6 +663,44 @@ namespace BTP
                              -1
                             };
             StartPeriodicOperation();
+            StartPositionUpdates();
+        }
+
+        // Fabion: координаты в окне «Ручной» — ~100 раз в секунду (отдельно от опроса состояния 10 Гц)
+        [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint uPeriod);
+        Thread _posThread;
+        volatile bool _posPending;
+        void StartPositionUpdates()
+        {
+            if (_posThread != null) return;
+            try { timeBeginPeriod(1); } catch { }   // Sleep(10) без этого спит ~15,6 мс
+            _posThread = new Thread(() =>
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                long next = 0;
+                while (!IsDisposed)
+                {
+                    next += 10;
+                    var wait = next - sw.ElapsedMilliseconds;
+                    if (wait > 0) Thread.Sleep((int)wait);
+                    else next = sw.ElapsedMilliseconds;   // не успели — не копим отставание
+
+                    var m = Manual;
+                    if (_posPending || m == null || m.IsDisposed || !m.IsHandleCreated) continue;
+                    _posPending = true;   // следующий кадр — только когда интерфейс отрисовал предыдущий
+                    try
+                    {
+                        m.BeginInvoke(new Action(() =>
+                        {
+                            try { m.UpdatePositions(); }
+                            catch (Exception ex) { Console.WriteLine("Координаты: " + ex.Message); }
+                            finally { _posPending = false; }
+                        }));
+                    }
+                    catch { _posPending = false; }
+                }
+            }) { IsBackground = true, Name = "ui-positions" };
+            _posThread.Start();
         }
 
         // Fabion: окно генерации простых траекторий
