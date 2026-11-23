@@ -162,7 +162,7 @@ namespace BTP
                 ZS3LL.BackColor = SystemColors.Control;
             }
             #endregion
-            Console.WriteLine("reload manual");
+            //Console.WriteLine("reload manual");
         }
 
         public void set_pos_lab(string[] pos)

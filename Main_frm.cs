@@ -639,7 +639,9 @@ namespace BTP
         {
             int port;
             if (!int.TryParse(ConnectionData.com_sup, out port) || port <= 0) port = 62000;
-            var host = string.IsNullOrWhiteSpace(ConnectionData.com_main) || ConnectionData.com_main.StartsWith("COM") ? "127.0.0.1" : ConnectionData.com_main;
+            var host = "127.0.0.1";
+            port = 62000;
+            // var host = string.IsNullOrWhiteSpace(ConnectionData.com_main) || ConnectionData.com_main.StartsWith("COM") ? "127.0.0.1" : ConnectionData.com_main;
             if (ConnectionData.Value != null) ConnectionData.Value.client.Close();
             ConnectionData.Value = new ChanelGateway(host, port);
             var ch = ConnectionData.Value;
