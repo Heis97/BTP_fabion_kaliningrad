@@ -32,6 +32,71 @@ namespace BTP
             InitializeComponent();
             status_label = MachinePosX;
             FabionLayout();
+            AddServoSliders();
+        }
+
+        //---------------- Fabion: слайдеры сервоприводов захвата шприцов (0–180°) ----------------
+        const int SERVO_COUNT = 3;
+        readonly TrackBar[] servoBars = new TrackBar[SERVO_COUNT];
+        readonly Label[] servoLabels = new Label[SERVO_COUNT];
+        readonly int[] servoSent = { -1, -1, -1 };     // последний отправленный угол
+        System.Windows.Forms.Timer servoTimer;
+
+        void AddServoSliders()
+        {
+            var gb = new GroupBox
+            {
+                Name = "servo_gp",
+                Text = "Захват шприцов, °",
+                Font = new Font("Segoe UI", 12f),
+                Size = new Size(520, 70 + SERVO_COUNT * 70),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+            };
+            gb.Location = new Point(ClientSize.Width - gb.Width - 14, ClientSize.Height - gb.Height - 14);
+
+            for (int i = 0; i < SERVO_COUNT; i++)
+            {
+                int y = 35 + i * 70;
+                var cap = new Label { Text = "Шприц " + (i + 1), AutoSize = false, Size = new Size(95, 30), Location = new Point(10, y + 8) };
+                var bar = new TrackBar
+                {
+                    Minimum = 0, Maximum = 180, Value = 90,
+                    TickFrequency = 15, SmallChange = 1, LargeChange = 15,
+                    Size = new Size(330, 45), Location = new Point(105, y),
+                    Tag = i,
+                };
+                var val = new Label { Text = "90°", AutoSize = false, Size = new Size(70, 30), Location = new Point(440, y + 8), TextAlign = ContentAlignment.MiddleRight };
+                bar.ValueChanged += (sender, e) =>
+                {
+                    var tb = (TrackBar)sender;
+                    servoLabels[(int)tb.Tag].Text = tb.Value + "°";
+                };
+                servoBars[i] = bar;
+                servoLabels[i] = val;
+                gb.Controls.Add(cap);
+                gb.Controls.Add(bar);
+                gb.Controls.Add(val);
+            }
+            Controls.Add(gb);
+            gb.BringToFront();
+
+            // При перетаскивании слайдер даёт десятки событий — отправляем не чаще 20 раз в секунду,
+            // и только если угол изменился.
+            servoTimer = new System.Windows.Forms.Timer { Interval = 50 };
+            servoTimer.Tick += (sender, e) =>
+            {
+                if (ConnectionData.Value == null || !ConnectionData.Value.client.Connected) return;
+                for (int i = 0; i < SERVO_COUNT; i++)
+                {
+                    var v = servoBars[i].Value;
+                    if (v == servoSent[i]) continue;
+                    // первое значение не шлём само по себе: до движения слайдера серво стоит как стоял
+                    if (servoSent[i] == -1 && v == 90 && !servoBars[i].Focused) continue;
+                    ConnectionData.Value.SetServoAngle(i, v);
+                    servoSent[i] = v;
+                }
+            };
+            servoTimer.Start();
         }
 
         // Fabion: раскладка меток координат. Вызывается в конструкторе и после смены языка

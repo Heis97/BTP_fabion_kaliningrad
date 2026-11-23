@@ -254,6 +254,20 @@ namespace BTP
             client.Send("num1 M577 I" + index + " V" + value);
         }
 
+        // Сервопривод по углу 0..180°. Плата формирует импульс в тактах прерывания управления
+        // (~104 616 тактов в секунду, период 20 мс = 2000 тактов), поэтому угол → длительность импульса → такты.
+        // Типовой сервопривод: 0° = 500 мкс, 180° = 2500 мкс. Если ваш ходит не на весь угол — поправьте эти два числа.
+        public const double SERVO_MIN_US = 500;
+        public const double SERVO_MAX_US = 2500;
+        public const double SERVO_TICKS_PER_SEC = 104616.18;
+        public void SetServoAngle(int index, int angle)
+        {
+            angle = Math.Max(0, Math.Min(180, angle));
+            var us = SERVO_MIN_US + (SERVO_MAX_US - SERVO_MIN_US) * angle / 180.0;
+            var ticks = (int)Math.Round(us * SERVO_TICKS_PER_SEC / 1e6);
+            SetServo(index, ticks);
+        }
+
         // channel: 0 — стол, 1..3 — шприцы. temp = 0 — выключить
         public void SetTemperature(int channel, double temp)
         {
