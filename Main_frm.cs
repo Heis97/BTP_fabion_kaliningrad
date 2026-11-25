@@ -45,6 +45,7 @@ namespace BTP
 
             //Camera2frm = new Camera2_frm();
             AddTrajGenButton();
+            AddTemperaturePanel();
         }
 
         // Fabion: опрос состояния шлюза 10 раз в секунду, обновление окон, переподключение
@@ -77,6 +78,7 @@ namespace BTP
             if (text == null) return;
             this.Text = "BTP Fabion — " + text;
             if (Manual != null && !Manual.IsDisposed) Manual.UpdateLabelSafe(text);
+            UpdateTemperaturePanel();
             try
             {
                 if (CallBackMy2.callbackEventHandler != null && Manual != null && Manual.Visible) CallBackMy2.callbackEventHandler("");
@@ -721,12 +723,108 @@ namespace BTP
             btn.Font = DiagnosticsBtn.Font;
             btn.BackColor = SystemColors.Control;
             btn.UseVisualStyleBackColor = false;
-            // справа от самой правой кнопки панели
+            // справа от самой правой кнопки панели (кроме «Выход» — она прижата к правому краю)
             int right = 0, top = DiagnosticsBtn.Top;
-            foreach (Control ctl in panel1.Controls) if (ctl is Button && ctl.Right > right) { right = ctl.Right; top = ctl.Top; }
+            foreach (Control ctl in panel1.Controls) if (ctl is Button && ctl != ExitBtn && ctl.Right > right) { right = ctl.Right; top = ctl.Top; }
             btn.Location = new Point(right + 6, top);
             btn.Click += TrajGenBtn_Click;
             panel1.Controls.Add(btn);
+        }
+
+        //---------------- Fabion: температура шприца и стола на главном экране ----------------
+        NumericUpDown syrSet, bedSet;
+        CheckBox syrOn, bedOn;
+        Label syrCur, bedCur;
+        System.Windows.Forms.Timer tempSendTimer;
+        bool syrDirty, bedDirty;
+
+        void AddTemperaturePanel()
+        {
+            // место на нижней панели между последней кнопкой и «Выход»
+            int left = 0;
+            foreach (Control ctl in panel1.Controls) if (ctl != ExitBtn && ctl.Right > left) left = ctl.Right;
+            left += 12;
+            int width = Math.Max(420, ExitBtn.Left - left - 12);
+
+            var gb = new GroupBox
+            {
+                Name = "temp_gb",
+                Text = "Температура, °C",
+                Font = new Font("Segoe UI", 11f),
+                Location = new Point(left, 0),
+                Size = new Size(width, panel1.Height - 4),
+            };
+
+            int rowH = 40, y0 = 24;
+            CreateTempRow(gb, y0, "Шприц", ChanelGateway.SYRINGE_T_MIN, ChanelGateway.SYRINGE_T_MAX, 37, 0.5m, out syrSet, out syrOn, out syrCur);
+            CreateTempRow(gb, y0 + rowH, "Стол", ChanelGateway.BED_T_MIN, ChanelGateway.BED_T_MAX, 26, 0.1m, out bedSet, out bedOn, out bedCur);
+
+            syrSet.ValueChanged += (o, e) => { if (syrOn.Checked) syrDirty = true; };
+            bedSet.ValueChanged += (o, e) => { if (bedOn.Checked) bedDirty = true; };
+            syrOn.CheckedChanged += (o, e) => { syrDirty = true; StyleToggle(syrOn); };
+            bedOn.CheckedChanged += (o, e) => { bedDirty = true; StyleToggle(bedOn); };
+
+            panel1.Controls.Add(gb);
+
+            // Отправка с задержкой 0,3 с: щелчки по стрелкам уставки не превращаются в поток команд
+            tempSendTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            tempSendTimer.Tick += (o, e) =>
+            {
+                var ch = ConnectionData.Value;
+                if (ch == null || !ch.client.Connected) return;
+                if (syrDirty) { syrDirty = false; ch.SetSyringeTemperature((double)syrSet.Value, syrOn.Checked); }
+                if (bedDirty) { bedDirty = false; ch.SetBedTemperature((double)bedSet.Value, bedOn.Checked); }
+            };
+            tempSendTimer.Start();
+        }
+
+        void CreateTempRow(GroupBox gb, int y, string caption, double min, double max, double def, decimal step,
+                           out NumericUpDown setNum, out CheckBox on, out Label cur)
+        {
+            var cap = new Label { Text = caption, AutoSize = false, Size = new Size(70, 30), Location = new Point(10, y + 3) };
+            setNum = new NumericUpDown
+            {
+                Minimum = (decimal)min, Maximum = (decimal)max, Value = (decimal)def,
+                DecimalPlaces = 1, Increment = step,
+                Size = new Size(80, 30), Location = new Point(82, y),
+            };
+            var range = new Label { Text = min + "–" + max, AutoSize = false, Size = new Size(60, 30), Location = new Point(166, y + 3), ForeColor = Color.Gray };
+            on = new CheckBox
+            {
+                Text = "Выкл", Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(70, 32), Location = new Point(230, y - 1),
+            };
+            cur = new Label { Text = "— °C", AutoSize = false, Size = new Size(150, 30), Location = new Point(308, y + 3) };
+            gb.Controls.Add(cap);
+            gb.Controls.Add(setNum);
+            gb.Controls.Add(range);
+            gb.Controls.Add(on);
+            gb.Controls.Add(cur);
+            StyleToggle(on);
+        }
+
+        static void StyleToggle(CheckBox cb)
+        {
+            cb.Text = cb.Checked ? "Вкл" : "Выкл";
+            cb.BackColor = cb.Checked ? Color.YellowGreen : SystemColors.Control;
+        }
+
+        // 10 раз в секунду: текущая температура и уставка, которую подтвердила плата
+        void UpdateTemperaturePanel()
+        {
+            var ch = ConnectionData.Value;
+            if (syrCur == null || ch == null) return;
+            if (!ch.client.Connected) { syrCur.Text = bedCur.Text = "нет связи"; return; }
+            var st = ch.State;
+            syrCur.Text = FormatTemp(st.Temperature, st.HasTemperatureTargets ? st.SyringeTarget : -1);
+            bedCur.Text = FormatTemp(st.BedTemperature, st.HasTemperatureTargets ? st.BedTarget : -1);
+        }
+
+        static string FormatTemp(double t, double target)
+        {
+            var s = t.ToString("0.0") + " °C";
+            if (target > 0) s += " → " + target.ToString("0.0");
+            return s;
         }
 
         private void BTP_Load(object sender, EventArgs e)

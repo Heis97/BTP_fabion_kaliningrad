@@ -271,7 +271,26 @@ namespace BTP
         // channel: 0 — стол, 1..3 — шприцы. temp = 0 — выключить
         public void SetTemperature(int channel, double temp)
         {
-            client.Send("num1 M579 N" + channel + " E" + (temp != 0 ? 1 : 0) + " T" + F(temp));
+            if (channel == 0) SetBedTemperature(temp, temp != 0);
+            else SetSyringeTemperature(temp, temp != 0);
+        }
+
+        // Fabion: диапазоны уставок
+        public const double SYRINGE_T_MIN = 5, SYRINGE_T_MAX = 37;   // шприц — Пельтье, греет и охлаждает
+        public const double BED_T_MIN = 25, BED_T_MAX = 27;          // стол — нагреватель PA1, только нагрев
+
+        // Шприц: Пельтье на Octopus (M579: T — уставка, E — вкл/выкл)
+        public void SetSyringeTemperature(double temp, bool on)
+        {
+            temp = Math.Max(SYRINGE_T_MIN, Math.Min(SYRINGE_T_MAX, temp));
+            client.Send("num1 M579 T" + F(temp) + " E" + (on ? 1 : 0));
+        }
+
+        // Стол: штатный нагреватель Marlin (M140 S, S0 — выкл)
+        public void SetBedTemperature(double temp, bool on)
+        {
+            temp = Math.Max(BED_T_MIN, Math.Min(BED_T_MAX, temp));
+            client.Send("num1 M140 S" + (on ? F(temp) : "0"));
         }
 
         //================================================================ периферия

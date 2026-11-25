@@ -30,7 +30,11 @@ namespace Connection
 
         public bool[] Lasers = { true, true };          // true = луч цел
         public bool[] Endstops = new bool[8];           // true = сработал
-        public double Temperature;                      // °C
+        public double Temperature;                      // °C — шприц (датчик TH0, Пельтье)
+        public double BedTemperature;                   // °C — стол (датчик TB)
+        public double SyringeTarget;                    // уставка шприца, 0 — выкл
+        public double BedTarget;                        // уставка стола, 0 — выкл
+        public bool HasTemperatureTargets;              // прошивка присылает поля 14–16
         public int[] NozzleSearch = new int[3];         // 0 — нет, 1 — ищет, 2 — найдено
         public int HomingStage;                         // 0 — нет, 1 — Z, 2 — XY
 
@@ -267,6 +271,16 @@ namespace Connection
                 else if (type == 1 && t.Length >= 13)
                 {
                     for (int i = 0; i < 8; i++) s.MotorSteps[i] = L(t[5 + i]);
+                }
+                // Fabion: тип 2 — температуры: 5 — стол *100, 6 — уставка шприца *100, 7 — уставка стола *100.
+                // Поле «ttttt» шлюза идёт сразу после полей платы (k-10): если оно на позиции 8,
+                // значит, три поля температуры есть (в старой прошивке здесь были 8 концевиков — тогда k-10 = 13).
+                else if (type == 2 && k - 10 == 8)
+                {
+                    s.BedTemperature = D(t[5]) / 100.0;
+                    s.SyringeTarget = D(t[6]) / 100.0;
+                    s.BedTarget = D(t[7]) / 100.0;
+                    s.HasTemperatureTargets = true;
                 }
 
                 if (k > 10)
